@@ -1,1 +1,66 @@
+name: Build SukiSU Ultra GKI Kernel (GT Neo5 / RMX3706)
 
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_tag:
+        description: "AOSP android12-5.10 tag；auto = 自动定位 5.10.236（与你当前系统一致）"
+        required: false
+        default: "auto"
+      sukisu_ref:
+        description: "SukiSU-Ultra 分支/tag：susfs-main(推荐,最新SukiSU+susfs) / main(无susfs) / susfs-1.5.x / 提交号；none=不集成"
+        required: false
+        default: "susfs-main"
+      clang_version:
+        description: "AOSP clang 版本（默认 clang-r416183b = clang 12.0.5，与你原厂工具链一致）"
+        required: false
+        default: "clang-r416183b"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flex bison bc cpio zip unzip curl wget git \
+            libssl-dev libelf-dev python3 binutils
+
+      # 模式A：只上传了 GT_Neo5_SukiSU_Build_upload.zip 时，自动解压还原工程
+      - name: Unpack project archive (optional)
+        run: |
+          if ls GT_Neo5_SukiSU_Build_upload.zip >/dev/null 2>&1; then
+            echo "[+] Found GT_Neo5_SukiSU_Build_upload.zip, unpacking project..."
+            unzip -o -q GT_Neo5_SukiSU_Build_upload.zip
+            if [ -d GT_Neo5_SukiSU_Build ]; then
+              mv -f GT_Neo5_SukiSU_Build/.github . 2>/dev/null || true
+              mv -f GT_Neo5_SukiSU_Build/build_kernel.sh GT_Neo5_SukiSU_Build/README.md \
+                    GT_Neo5_SukiSU_Build/configs GT_Neo5_SukiSU_Build/template \
+                    GT_Neo5_SukiSU_Build/scripts . 2>/dev/null || true
+              rm -rf GT_Neo5_SukiSU_Build
+            fi
+            rm -f GT_Neo5_SukiSU_Build_upload.zip
+          fi
+          echo "--- repo content after unpack ---"
+          ls -la
+
+      - name: Build kernel
+        run: |
+          chmod +x ./build_kernel.sh
+          ./build_kernel.sh \
+            "${{ github.event.inputs.kernel_tag }}" \
+            "${{ github.event.inputs.sukisu_ref }}" \
+            "${{ github.event.inputs.clang_version }}"
+
+      - name: Upload artifacts (flashable zip + built config)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GT_Neo5_SukiSU_Ultra_Kernel
+          path: out/*
+          retention-days: 30
